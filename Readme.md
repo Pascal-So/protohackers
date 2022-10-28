@@ -4,9 +4,13 @@ My solutions to a set of server programming challenges published here: https://p
 
 ## Spoilers Ahead
 
-### 01 - Means to an End
+### 01 - Prime Time
 
 The grader here seems to be very lax, according to the problem description we might get an input like `1.3e1` to which we'd obviously have to return `true`, but such an input never occurs.
+
+### 02 - Means to an End
+
+Sum is biiig
 
 ### 05 - Mob in the Middle
 

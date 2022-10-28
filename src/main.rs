@@ -2,6 +2,7 @@ mod server;
 mod shutdown;
 mod t00_smoke_test;
 mod t01_prime_time;
+mod t02_means_to_an_end;
 mod t05_mob_in_the_middle;
 
 use std::net::SocketAddr;
@@ -39,7 +40,7 @@ async fn main() {
 
         let shutdown_token = shutdown.token();
         spawn(async move {
-            match t01_prime_time::handle_connection(tcp_stream, shutdown_token, client_id).await {
+            match t02_means_to_an_end::handle_connection(tcp_stream, shutdown_token, client_id) .await {
                 Ok(_) => info!("handler finished for client {client_id}"),
                 Err(e) => warn!("handler error for client {client_id}: {e}"),
             }
