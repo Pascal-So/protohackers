@@ -50,7 +50,7 @@ pub async fn handle_connection(
 
             let out = if count == 0 { 0 } else { sum / count } as i32;
             debug!("<-- {client_id}: {out}");
-            stream.write(&out.to_be_bytes()).await?;
+            stream.write_all(&out.to_be_bytes()).await?;
         }
     }
 

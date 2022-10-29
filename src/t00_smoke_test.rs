@@ -27,7 +27,7 @@ pub async fn handle_connection(
         }
 
         debug!("Client {client_id} sent: {:?}", &buf[..bytes]);
-        stream.write(&buf[..bytes]).await?;
+        stream.write_all(&buf[..bytes]).await?;
     }
 
     Ok(())

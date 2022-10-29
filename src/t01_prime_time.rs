@@ -24,7 +24,7 @@ fn get_number(val: &Value) -> Option<String> {
     // We further want to ensure that it is a non-negative integer
     // because we can't pass floats or negative numbers to the
     // `is_prime` function. Anything that is not a non-negative
-    // integer is just swapped out for "0" because that's an 
+    // integer is just swapped out for "0" because that's an
     // accepted input for `is_prime` and is also not a prime.
 
     if let Some(capt) = REGEX.captures(&num) {
@@ -72,7 +72,7 @@ pub async fn handle_connection(
         };
 
         debug!("--> {client_id}: {line}");
-        let response = handle_line(&line, client_id).unwrap_or(String::from(r#"error"#));
+        let response = handle_line(&line, client_id).unwrap_or_else(|| String::from(r#"error"#));
         debug!("<-- {client_id}: {response}");
 
         write.write_all(response.as_bytes()).await?;

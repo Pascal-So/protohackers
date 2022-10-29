@@ -1,14 +1,14 @@
-use std::{borrow::Cow, io::Result, net::SocketAddr};
+use std::{borrow::Cow, io::Result};
 
-use log::{debug, info, warn};
+use log::debug;
 use regex::Regex;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net::{TcpListener, TcpStream},
-    select, signal, spawn,
+    net::TcpStream,
+    select,
 };
 
-use crate::shutdown::{ShutdownController, ShutdownToken};
+use crate::shutdown::ShutdownToken;
 
 const TONY: &str = "7YWHMfk9JZe0LM0g1ZauHuiSxhI";
 const SERVER: &str = "chat.protohackers.com:16963";
@@ -36,18 +36,18 @@ fn replace<'a>(input: &'a str, regex: &Regex) -> Cow<'a, str> {
         }
 
         if let Cow::Owned(o) = &mut out {
-            o.extend(input[last_end..loc.start()].chars());
+            o.push_str(&input[last_end..loc.start()]);
             if replace {
-                o.extend(TONY.chars());
+                o.push_str(TONY);
             } else {
-                o.extend(loc.as_str().chars());
+                o.push_str(loc.as_str());
             }
         }
         last_end = loc.end();
     }
 
     if let Cow::Owned(o) = &mut out {
-        o.extend(input[last_end..].chars());
+        o.push_str(&input[last_end..]);
     }
 
     out
@@ -102,14 +102,14 @@ pub async fn handle_connection(
             }
             debug!("   * <- {client_id} : {}", line.trim());
 
-            let replaced = if !first && line.chars().next() != Some('*') {
+            let replaced = if !first && !line.starts_with('*') {
                 replace(&line, &bogus_regex)
             } else {
                 Cow::from(&line)
             };
 
             debug!("<- *    {client_id} : {replaced}");
-            write_client.write(replaced.as_bytes()).await?;
+            write_client.write_all(replaced.as_bytes()).await?;
             first = false;
         }
         debug!("Server {client_id} EOF");
