@@ -6,6 +6,7 @@ mod t02_means_to_an_end;
 mod t03_budget_chat;
 mod t04_unusual_database_program;
 mod t05_mob_in_the_middle;
+mod t06_speed_daemon;
 
 use std::net::SocketAddr;
 
@@ -27,14 +28,19 @@ async fn main() {
     };
     info!("Starting server on port {port}");
 
+
     let shutdown = ShutdownController::new();
 
-    t04_unusual_database_program::server(port, shutdown.token()).await.unwrap();
-    return;
+    // t04_unusual_database_program::server(port, shutdown.token())
+    //     .await
+    //     .unwrap();
+    // return;
 
     let listener = TcpListener::bind(SocketAddr::new([0, 0, 0, 0].into(), port))
         .await
         .unwrap();
+    t06_speed_daemon::server(listener).await;
+    return;
 
     let state = State::new();
 
