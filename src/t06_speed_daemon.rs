@@ -169,20 +169,16 @@ impl ClientData {
                 }
             }
             ClientMessage::IAmCamera(_) => match self.client_type {
-                ClientType::Camera => Some("requested camera but already registered as camera"),
-                ClientType::Dispatcher => {
-                    Some("requested camera but already registered as dispatcher")
-                }
+                ClientType::Camera => Some("repeated IAmCamera"),
+                ClientType::Dispatcher => Some("IAmCamera after IAmDispatcher"),
                 ClientType::Unknown => {
                     self.client_type = ClientType::Camera;
                     None
                 }
             },
             ClientMessage::IAmDispatcher { .. } => match self.client_type {
-                ClientType::Camera => Some("requested dispatcher but already registered as camera"),
-                ClientType::Dispatcher => {
-                    Some("requested dispatcher but already registered as dispatcher")
-                }
+                ClientType::Camera => Some("IAmDispatcher after IAmCamera"),
+                ClientType::Dispatcher => Some("repeated IAmDispatcher"),
                 ClientType::Unknown => {
                     self.client_type = ClientType::Dispatcher;
                     None
@@ -230,9 +226,7 @@ impl ClientReader {
 
                     self.buf_filled += bytes;
                 }
-                Err(DekuError::Parse(_)) => {
-                    return Ok(ClientReadResult::InvalidMessageType)
-                }
+                Err(DekuError::Parse(_)) => return Ok(ClientReadResult::InvalidMessageType),
                 Err(e) => {
                     warn!("Unexpected deku error {e}");
                     return Err(std::io::Error::new(std::io::ErrorKind::Other, e));
@@ -487,9 +481,10 @@ async fn handle_read_half(
                             if interval > 0 {
                                 let sender = sender.clone();
                                 spawn(async move {
-                                    while let Ok(_) = sender
+                                    while sender
                                         .send((client_id, Some(ServerMessage::Heartbeat)))
                                         .await
+                                        .is_ok()
                                     {
                                         sleep(Duration::from_millis(interval as u64 * 100)).await;
                                     }

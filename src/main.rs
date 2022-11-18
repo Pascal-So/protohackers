@@ -7,6 +7,7 @@ mod t03_budget_chat;
 mod t04_unusual_database_program;
 mod t05_mob_in_the_middle;
 mod t06_speed_daemon;
+mod t07_line_reversal;
 
 use std::net::SocketAddr;
 
@@ -28,6 +29,8 @@ async fn main() {
     };
     info!("Starting server on port {port}");
 
+    t07_line_reversal::server(port).await.unwrap();
+    return;
 
     let shutdown = ShutdownController::new();
 
