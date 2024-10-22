@@ -1,34 +1,70 @@
-use std::io::Result;
-
-use log::debug;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
+use std::{
+    io::{Read, Write},
     net::TcpStream,
-    select,
 };
 
-use crate::shutdown::ShutdownToken;
+use log::debug;
 
-pub async fn handle_connection(
-    mut stream: TcpStream,
-    mut shutdown_token: ShutdownToken,
-    client_id: i32,
-) -> Result<()> {
-    let mut buf = vec![0; 2048];
+use crate::server::TcpServerProblem;
 
-    loop {
-        let bytes = select! {
-            bytes = stream.read(&mut buf) => bytes?,
-            _ = shutdown_token.wait_for_shutdown() => break,
-        };
+struct EchoServer;
 
-        if bytes == 0 {
-            break;
+impl TcpServerProblem for EchoServer {
+    type SharedState = ();
+
+    fn handle_connection(
+        mut stream: TcpStream,
+        _client_id: i32,
+        _state: Self::SharedState,
+    ) -> anyhow::Result<()> {
+        let mut buf = [0; 1024];
+        loop {
+            let bytes = stream.read(&mut buf)?;
+            debug!("EchoServer: read {bytes} bytes");
+            stream.write_all(&buf[..bytes])?;
         }
+    }
+}
 
-        debug!("Client {client_id} sent: {:?}", &buf[..bytes]);
-        stream.write_all(&buf[..bytes]).await?;
+#[cfg(test)]
+mod tests {
+    use std::net::TcpStream;
+
+    use crate::server::run_tcp_server;
+
+    use super::*;
+
+    #[test]
+    fn smoke_test() {
+        let port = 9910;
+        run_tcp_server::<EchoServer>(port, ());
+
+        let mut client = TcpStream::connect(("localhost", port)).unwrap();
+
+        let mut buf = [0; 100];
+        client.write("hello".as_bytes()).unwrap();
+        assert_eq!(client.read(&mut buf).unwrap(), 5);
+        assert_eq!(&buf[0..5], "hello".as_bytes());
+
+        client.write("world".as_bytes()).unwrap();
+        assert_eq!(client.read(&mut buf).unwrap(), 5);
+        assert_eq!(&buf[0..5], "world".as_bytes());
     }
 
-    Ok(())
+    #[test]
+    fn simultaneous_clients() {
+        let port = 9920;
+        run_tcp_server::<EchoServer>(port, ());
+
+        let mut client_a = TcpStream::connect(("localhost", port)).unwrap();
+        let mut client_b = TcpStream::connect(("localhost", port)).unwrap();
+
+        let mut buf = [0; 100];
+        client_a.write("hello".as_bytes()).unwrap();
+        client_b.write("world".as_bytes()).unwrap();
+        assert_eq!(client_a.read(&mut buf).unwrap(), 5);
+        assert_eq!(&buf[..5], "hello".as_bytes());
+        assert_eq!(client_b.read(&mut buf).unwrap(), 5);
+        assert_eq!(&buf[..5], "world".as_bytes());
+    }
 }

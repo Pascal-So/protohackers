@@ -8,6 +8,7 @@ mod t04_unusual_database_program;
 mod t05_mob_in_the_middle;
 mod t06_speed_daemon;
 mod t07_line_reversal;
+mod t08_insecure_sockets_layer;
 
 use std::net::SocketAddr;
 
@@ -29,7 +30,12 @@ async fn main() {
     };
     info!("Starting server on port {port}");
 
-    t07_line_reversal::server(port).await.unwrap();
+    // t07_line_reversal::server(port).await.unwrap();
+    tokio::task::spawn_blocking(move || {
+        server::run_tcp_server::<t08_insecure_sockets_layer::ISLServer>(port, ());
+
+        loop {}
+    }).await.unwrap();
     return;
 
     let shutdown = ShutdownController::new();
