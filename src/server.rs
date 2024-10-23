@@ -6,8 +6,12 @@ use std::{
 use log::{info, warn};
 
 /// Start a TCP server and run it in the background
-pub fn run_tcp_server<Problem: TcpServerProblem>(problem: Problem, port: u16) {
+pub fn run_tcp_server<Problem: TcpServerProblem>(problem: Problem, port: u16) -> SocketAddr {
     let listener = TcpListener::bind(SocketAddr::new([0, 0, 0, 0].into(), port)).unwrap();
+
+    let addr = listener.local_addr().unwrap();
+
+    info!("Listening on {addr}");
 
     spawn(move || {
         for client_id in 0.. {
@@ -25,6 +29,8 @@ pub fn run_tcp_server<Problem: TcpServerProblem>(problem: Problem, port: u16) {
             });
         }
     });
+
+    addr
 }
 
 pub trait TcpServerProblem: Clone + Send + Sync + 'static {
@@ -44,6 +50,16 @@ mod tests {
     #[derive(Clone)]
     struct SimpleProblem(Arc<Mutex<Vec<(String, i32)>>>);
 
+    impl SimpleProblem {
+        fn new() -> SimpleProblem {
+            SimpleProblem(Arc::new(Mutex::new(vec![])))
+        }
+
+        fn with_capacity(capacity: usize) -> SimpleProblem {
+            SimpleProblem(Arc::new(Mutex::new(Vec::with_capacity(capacity))))
+        }
+    }
+
     impl TcpServerProblem for SimpleProblem {
         fn handle_connection(self, mut stream: TcpStream, client_id: i32) -> anyhow::Result<()> {
             let mut buf = String::new();
@@ -58,7 +74,7 @@ mod tests {
 
     #[test]
     fn test_receives_messages() {
-        let problem = SimpleProblem(Arc::new(Mutex::new(vec![])));
+        let problem = SimpleProblem::new();
 
         let port = 9515;
         run_tcp_server(problem.clone(), port);
@@ -91,5 +107,51 @@ mod tests {
 
         assert_eq!(state[0].1, 0);
         assert_eq!(state[1].1, 1);
+    }
+
+    #[test]
+    #[ignore]
+    fn stresstest() {
+        let n = 1024;
+
+        let problem = SimpleProblem::with_capacity(n);
+        let addr = run_tcp_server(problem.clone(), 0);
+
+        dbg!(&addr);
+
+        let barrier = std::sync::Barrier::new(n);
+
+        std::thread::scope(|s| {
+            for i in 0..n {
+                let addr = addr;
+                let barrier = &barrier;
+                s.spawn(move || {
+                    let res = std::net::TcpStream::connect_timeout(&addr, Duration::from_secs_f32(10.0));
+                    match res {
+                        Ok(mut conn) => {
+                            barrier.wait();
+
+                            // make sure we don't all write at once
+                            std::thread::sleep(Duration::from_secs_f32(0.0005 * i as f32));
+
+                            conn.write("hello".as_bytes()).unwrap();
+                            conn.shutdown(std::net::Shutdown::Both).unwrap();
+                        },
+                        e @ Err(_) => {
+                            // make sure the barrier wait still happens even if connect fails
+                            barrier.wait();
+                            e.unwrap();
+                        },
+                    }
+
+                });
+            }
+        });
+
+        std::thread::sleep(Duration::from_secs_f32(1.0));
+
+        let state = problem.0.lock().unwrap();
+        assert_eq!(state.len(), n);
+        assert_eq!(state[0].0, "hello");
     }
 }

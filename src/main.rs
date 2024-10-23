@@ -9,6 +9,7 @@ mod t05_mob_in_the_middle;
 mod t06_speed_daemon;
 mod t07_line_reversal;
 mod t08_insecure_sockets_layer;
+mod t09_job_centre;
 
 use std::net::SocketAddr;
 
@@ -32,7 +33,7 @@ async fn main() {
 
     // t07_line_reversal::server(port).await.unwrap();
     tokio::task::spawn_blocking(move || {
-        server::run_tcp_server(t08_insecure_sockets_layer::ISLServer, port);
+        server::run_tcp_server(t09_job_centre::JobCentre::new(), port);
 
         loop {}
     }).await.unwrap();

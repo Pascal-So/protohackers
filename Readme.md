@@ -27,3 +27,7 @@ Don't get confused by reading the messages sent by the tester. One message reads
 ### 08 - Inseccure Sockets Layer
 
 Let me know if anyone finds a nice identity test for the cipher spec. I just ended up brute-forcing it.
+
+### 09 - Job Centre
+
+Serving 1000 clients at a time, on Linux, requires an increased open file limit. `ulimit -n` shows the current limit, `ulimit -n 10000` increases the limit. This increased limit is only valid within and for the duration of the current shell.
