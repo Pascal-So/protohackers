@@ -32,7 +32,7 @@ async fn main() {
 
     // t07_line_reversal::server(port).await.unwrap();
     tokio::task::spawn_blocking(move || {
-        server::run_tcp_server::<t08_insecure_sockets_layer::ISLServer>(port, ());
+        server::run_tcp_server(t08_insecure_sockets_layer::ISLServer, port);
 
         loop {}
     }).await.unwrap();

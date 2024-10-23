@@ -16,9 +16,8 @@ use {
 
 use crate::server::TcpServerProblem;
 
-
 /// Cipher operations.
-/// 
+///
 /// The operation "00: End of cipher spec" is not represented here, the
 /// zero byte is manually added wherever needed.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -174,16 +173,11 @@ fn parse_ops(mut stream: impl io::Read) -> io::Result<Vec<Op>> {
     Ok(ops)
 }
 
+#[derive(Clone)]
 pub struct ISLServer;
 
 impl TcpServerProblem for ISLServer {
-    type SharedState = ();
-
-    fn handle_connection(
-        mut stream: TcpStream,
-        client_id: i32,
-        _state: Self::SharedState,
-    ) -> anyhow::Result<()> {
+    fn handle_connection(self, mut stream: TcpStream, client_id: i32) -> anyhow::Result<()> {
         info!("Connected to client {client_id}");
         let mut reader = BufReader::new(stream.try_clone().context("cannot clone TcpStream")?);
         let ops = Op::compact_list(&parse_ops(&mut reader).context("cannot read cipher spec")?);
@@ -237,7 +231,8 @@ impl TcpServerProblem for ISLServer {
                             Ok((max_count, max_order))
                         }
                     })
-                    .context("empty line received")?.context("cannot parse line")?;
+                    .context("empty line received")?
+                    .context("cannot parse line")?;
 
                 info!("Client {client_id} max order: {max_order}");
 
@@ -269,7 +264,7 @@ mod test {
     #[test]
     fn example_session() {
         let port = 9918;
-        run_tcp_server::<ISLServer>(port, ());
+        run_tcp_server(ISLServer, port);
         let mut conn = std::net::TcpStream::connect(("localhost", port)).unwrap();
 
         conn.write_all(&[0x02, 0x7b, 0x05, 0x01, 0x00]).unwrap(); // xor(123),addpos,reversebits
@@ -293,7 +288,7 @@ mod test {
     #[test]
     fn reject_identity_cipher() {
         let port = 9928;
-        run_tcp_server::<ISLServer>(port, ());
+        run_tcp_server(ISLServer, port);
 
         let encoded = Op::encode_list(&[Op::Xor(1), Op::Xor(1)]);
 

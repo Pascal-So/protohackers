@@ -7,16 +7,11 @@ use log::debug;
 
 use crate::server::TcpServerProblem;
 
+#[derive(Clone)]
 struct EchoServer;
 
 impl TcpServerProblem for EchoServer {
-    type SharedState = ();
-
-    fn handle_connection(
-        mut stream: TcpStream,
-        _client_id: i32,
-        _state: Self::SharedState,
-    ) -> anyhow::Result<()> {
+    fn handle_connection(self, mut stream: TcpStream, _client_id: i32) -> anyhow::Result<()> {
         let mut buf = [0; 1024];
         loop {
             let bytes = stream.read(&mut buf)?;
@@ -37,7 +32,7 @@ mod tests {
     #[test]
     fn smoke_test() {
         let port = 9910;
-        run_tcp_server::<EchoServer>(port, ());
+        run_tcp_server(EchoServer, port);
 
         let mut client = TcpStream::connect(("localhost", port)).unwrap();
 
@@ -54,7 +49,7 @@ mod tests {
     #[test]
     fn simultaneous_clients() {
         let port = 9920;
-        run_tcp_server::<EchoServer>(port, ());
+        run_tcp_server(EchoServer, port);
 
         let mut client_a = TcpStream::connect(("localhost", port)).unwrap();
         let mut client_b = TcpStream::connect(("localhost", port)).unwrap();

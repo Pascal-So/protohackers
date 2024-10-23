@@ -23,3 +23,7 @@ Don't strip newlines!
 ### 05 - Mob in the Middle
 
 Don't get confused by reading the messages sent by the tester. One message reads "7PBqhi52gBQukUuL4EUegLYQHW is too short", yet the address is valid and should be replaced.
+
+### 08 - Inseccure Sockets Layer
+
+Let me know if anyone finds a nice identity test for the cipher spec. I just ended up brute-forcing it.
