@@ -1,14 +1,11 @@
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+    io::{Read, Seek, Write},
     sync::{Arc, Mutex as SMutex},
     time::Duration,
 };
 
-use deku::{
-    bitvec::{BitSlice, BitVec, Msb0},
-    ctx::Endian,
-    prelude::*,
-};
+use deku::{ctx::Endian, prelude::*};
 use log::{debug, info, warn};
 
 use tokio::{
@@ -26,11 +23,11 @@ use tokio::{
 };
 
 #[derive(PartialEq, Eq, Clone, Hash, DekuRead, DekuWrite)]
-#[deku(endian = "endian", ctx = "endian: deku::ctx::Endian")]
+#[deku(endian = "endian", ctx = "_endian: deku::ctx::Endian")]
 struct Str(
     #[deku(
-        writer = "write_arr(deku::output, &self.0)",
-        reader = "read_arr(deku::rest)"
+        writer = "write_arr(deku::writer, &self.0)",
+        reader = "read_arr(deku::reader)"
     )]
     Vec<u8>,
 );
@@ -57,7 +54,7 @@ impl std::fmt::Display for ClientId {
 }
 
 #[derive(Debug, PartialEq, Eq, DekuWrite)]
-#[deku(type = "u8", bytes = "1", endian = "big")]
+#[deku(id_type = "u8", bytes = "1", endian = "big")]
 enum ServerMessage {
     #[deku(id = "0x10")]
     Error { msg: Str },
@@ -70,7 +67,7 @@ enum ServerMessage {
 }
 
 #[derive(Debug, PartialEq, Eq, DekuRead)]
-#[deku(endian = "big", type = "u8", bytes = "1")]
+#[deku(endian = "big", id_type = "u8", bytes = "1")]
 enum ClientMessage {
     #[deku(id = "0x20")]
     Plate { plate: Str, timestamp: u32 },
@@ -86,7 +83,7 @@ enum ClientMessage {
 
     #[deku(id = "0x81")]
     IAmDispatcher {
-        #[deku(reader = "read_arr(deku::rest)")]
+        #[deku(reader = "read_arr(deku::reader)")]
         roads: Vec<u16>,
     },
 }
@@ -98,25 +95,26 @@ enum ClientReadResult {
     InvalidMessageType,
 }
 
-fn read_arr<'a, T: DekuRead<'a, Endian>>(
-    rest: &'a BitSlice<Msb0, u8>,
-) -> Result<(&'a BitSlice<Msb0, u8>, Vec<T>), DekuError> {
-    let (mut rest, len) = u8::read(rest, ())?;
+fn read_arr<'a, T: DekuReader<'a, Endian>, R: Read + Seek>(
+    reader: &mut Reader<R>,
+) -> Result<Vec<T>, DekuError> {
+    let len = u8::from_reader_with_ctx(reader, ())?;
     let mut out = Vec::with_capacity(len as usize);
     for _ in 0..len {
-        let read = T::read(rest, Endian::Big)?;
-        rest = read.0;
-        out.push(read.1);
+        out.push(T::from_reader_with_ctx(reader, Endian::Big)?);
     }
-    Ok((rest, out))
+    Ok(out)
 }
 
-fn write_arr<T: DekuWrite>(output: &mut BitVec<Msb0, u8>, arr: &[T]) -> Result<(), DekuError> {
+fn write_arr<T: DekuWriter, W: Write + Seek>(
+    writer: &mut Writer<W>,
+    arr: &[T],
+) -> Result<(), DekuError> {
     let len = arr.len() as u8;
-    len.write(output, ())?;
+    len.to_writer(writer, ())?;
 
     for v in arr {
-        v.write(output, ())?;
+        v.to_writer(writer, ())?;
     }
     Ok(())
 }

@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.90"
-deku = "0.14.1"
+deku = "0.18.1"
 env_logger = "0.9.1"
 is_prime = "2.0.9"
 lazy_static = "1.4.0"
