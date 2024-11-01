@@ -144,7 +144,7 @@ fn get_job(entries: &mut Vec<Entry>, queues: &[String], client_id: i32) -> Respo
 mod tests {
     use std::{sync::atomic::AtomicBool, time::Duration};
 
-    use serde_json::{json, ser};
+    use serde_json::json;
 
     use super::*;
 

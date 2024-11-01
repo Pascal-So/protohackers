@@ -11,6 +11,7 @@ mod t07_line_reversal;
 mod t08_insecure_sockets_layer;
 mod t09_job_centre;
 mod t10_voracious_code_storage;
+mod t11_pest_control;
 
 use std::net::SocketAddr;
 
@@ -32,9 +33,11 @@ async fn main() {
     };
     info!("Starting server on port {port}");
 
+    let server = t11_pest_control::create_protohackers_solution();
+
     // t07_line_reversal::server(port).await.unwrap();
     tokio::task::spawn_blocking(move || {
-        server::run_tcp_server(t10_voracious_code_storage::VcsServer::new(), port);
+        server::run_tcp_server(server, port);
 
         loop {}
     }).await.unwrap();

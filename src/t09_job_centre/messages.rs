@@ -32,6 +32,7 @@ impl Response {
         }
     }
 
+    #[cfg(test)]
     pub fn from_json(val: &Value) -> Option<Self> {
         match val["status"].as_str() {
             Some("ok") => {
@@ -80,6 +81,7 @@ pub enum Request {
 }
 
 impl Request {
+    #[cfg(test)]
     pub fn to_json(&self) -> Value {
         match self {
             Request::Put {
