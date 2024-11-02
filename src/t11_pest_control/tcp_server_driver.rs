@@ -1,7 +1,4 @@
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::sync::{Arc, Mutex};
 
 use crate::{
     server::TcpServerProblem,
@@ -31,45 +28,39 @@ impl<Authority: AuthorityServer> PestControlServer<Authority> {
         buf_reader: &mut std::io::BufReader<std::net::TcpStream>,
         buf_writer: &mut std::io::BufWriter<std::net::TcpStream>,
     ) -> Result<(), TcpCommunicationError> {
+        TcpMessage::Hello.write(buf_writer)?;
         match TcpMessage::read(buf_reader)? {
             TcpMessage::Hello => {}
-            other => {
-                return Err(TcpCommunicationError::ProtocolError(format!(
-                    "expected hello from client, got {other:?}"
-                )))
-            }
-        }
-        TcpMessage::Hello.write(buf_writer)?;
-
-        let (site, populations) = match TcpMessage::read(buf_reader)? {
-            TcpMessage::SiteVisit { site, populations } => (site, populations),
-            other => {
-                return Err(TcpCommunicationError::ProtocolError(format!(
-                    "expected hello from client, got {other:?}"
-                )))
-            }
-        };
-
-        let result = self
-            .controller
-            .lock()
-            .unwrap()
-            .site_visit(site, populations);
-
-        match result {
-            Ok(()) => {}
-            Err(SiteVisitError::DuplicateObservations) => {
-                return Err(TcpCommunicationError::ProtocolError(
-                    "duplicate observations".to_string(),
-                ))
-            }
-            Err(SiteVisitError::InternalError(err)) => {
-                log::error!("Error during site visit: {err}");
-                // the client doesn't expect a response here, even in the case of an error.
-            }
+            other => return Err(TcpCommunicationError::expected("Hello", other)),
         }
 
-        todo!()
+        loop {
+            log::debug!("waiting for site visit from client");
+            let (site, populations) = match TcpMessage::read(buf_reader)? {
+                TcpMessage::SiteVisit { site, populations } => (site, populations),
+                other => return Err(TcpCommunicationError::expected("SiteVisit", other)),
+            };
+
+            let result = self
+                .controller
+                .lock()
+                .unwrap()
+                .site_visit(site, populations);
+            log::debug!("done handling site visit core");
+
+            match result {
+                Ok(()) => {}
+                Err(SiteVisitError::DuplicateObservations) => {
+                    return Err(TcpCommunicationError::PeerProtocolError(
+                        "duplicate observations".to_string(),
+                    ))
+                }
+                Err(SiteVisitError::InternalError(err)) => {
+                    log::error!("Error during site visit: {err:?}");
+                    // the client doesn't expect a response in this case
+                }
+            }
+        }
     }
 }
 
@@ -90,7 +81,6 @@ where
     Authority::Session: Send,
 {
     fn handle_connection(self, stream: std::net::TcpStream, _client_id: i32) -> anyhow::Result<()> {
-        stream.set_read_timeout(Some(Duration::from_secs_f32(0.5)))?;
         let mut buf_reader = std::io::BufReader::new(stream.try_clone()?);
         let mut buf_writer = std::io::BufWriter::new(stream);
 

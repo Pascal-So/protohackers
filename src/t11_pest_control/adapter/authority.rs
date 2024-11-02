@@ -7,7 +7,7 @@ use crate::t11_pest_control::{
     port::authority::{AuthorityServer, AuthoritySession},
 };
 
-use super::tcp_message_types::{handle_protocol_errors, TcpMessage, TcpCommunicationError};
+use super::tcp_message_types::{handle_protocol_errors, TcpCommunicationError, TcpMessage};
 
 pub struct OnlineAuthority {
     url: String,
@@ -27,21 +27,13 @@ impl OnlineAuthority {
         TcpMessage::Hello.write(buf_writer)?;
         match TcpMessage::read(buf_reader)? {
             TcpMessage::Hello => {}
-            other => {
-                return Err(TcpCommunicationError::ProtocolError(format!(
-                    "expected hello from autority, got {other:?}"
-                )))
-            }
+            other => return Err(TcpCommunicationError::expected("Hello", other)),
         }
 
         TcpMessage::DialAuthority { site }.write(buf_writer)?;
         let targets = match TcpMessage::read(buf_reader)? {
             TcpMessage::TargetPopulations { populations, .. } => populations,
-            other => {
-                return Err(TcpCommunicationError::ProtocolError(format!(
-                    "expected TargetPopulations from autority, got {other:?}"
-                )))
-            }
+            other => return Err(TcpCommunicationError::expected("TargetPopulations", other)),
         };
 
         Ok(targets)
@@ -68,6 +60,7 @@ impl AuthorityServer for OnlineAuthority {
             OnlineAuthoritySession {
                 buf_reader,
                 buf_writer,
+                site,
             },
             targets,
         ))
@@ -77,18 +70,18 @@ impl AuthorityServer for OnlineAuthority {
 pub struct OnlineAuthoritySession {
     buf_reader: std::io::BufReader<std::net::TcpStream>,
     buf_writer: std::io::BufWriter<std::net::TcpStream>,
+    site: types::Site,
 }
 
 impl OnlineAuthoritySession {
-    fn delete_policy_inner(&mut self, policy_id: types::PolicyId) -> Result<(), TcpCommunicationError> {
+    fn delete_policy_inner(
+        &mut self,
+        policy_id: types::PolicyId,
+    ) -> Result<(), TcpCommunicationError> {
         TcpMessage::DeletePolicy { policy_id }.write(&mut self.buf_writer)?;
         match TcpMessage::read(&mut self.buf_reader)? {
             TcpMessage::Ok => {}
-            other => {
-                return Err(TcpCommunicationError::ProtocolError(format!(
-                    "expected Ok from autority, got {other:?}"
-                )))
-            }
+            other => return Err(TcpCommunicationError::expected("Ok", other)),
         };
         Ok(())
     }
@@ -100,6 +93,8 @@ impl AuthoritySession for OnlineAuthoritySession {
         species: types::Species,
         action: types::PolicyAction,
     ) -> Result<types::PolicyId, anyhow::Error> {
+        let _span = tracing::info_span!("create_policy", site = self.site.id).entered();
+
         TcpMessage::CreatePolicy { species, action }.write(&mut self.buf_writer)?;
         let policy_id = match TcpMessage::read(&mut self.buf_reader)? {
             TcpMessage::PolicyResult { policy_id } => policy_id,
@@ -111,6 +106,8 @@ impl AuthoritySession for OnlineAuthoritySession {
     }
 
     fn delete_policy(&mut self, policy_id: types::PolicyId) -> Result<(), anyhow::Error> {
+        let _span = tracing::info_span!("delete_policy", site = self.site.id).entered();
+
         handle_protocol_errors(self.delete_policy_inner(policy_id), &mut self.buf_writer)
     }
 }

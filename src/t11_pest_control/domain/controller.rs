@@ -35,6 +35,7 @@ pub enum SiteVisitError {
 
 impl<Authority: AuthorityServer> Controller<Authority> {
     pub fn new(authority: Authority) -> Self {
+        log::info!("Starting pest control server");
         Self {
             authority,
             sites: HashMap::new(),
@@ -75,10 +76,7 @@ impl<Authority: AuthorityServer> Controller<Authority> {
         }
 
         for (species, range) in targets.iter() {
-            let count = match observations
-                .iter()
-                .find(|obs| obs.0 == *species)
-            {
+            let count = match observations.iter().find(|obs| obs.0 == *species) {
                 Some((_, count)) => *count,
                 None => 0,
             };
@@ -95,12 +93,16 @@ impl<Authority: AuthorityServer> Controller<Authority> {
 
             match (policies.get(species), new_action) {
                 (None, Some(new_action)) => {
-                    let id = session.create_policy(species.clone(), new_action).context("creating new policy")?;
+                    let id = session
+                        .create_policy(species.clone(), new_action)
+                        .context("creating new policy")?;
                     policies.insert(species.clone(), (id, new_action));
                 }
                 (Some((id, action)), Some(new_action)) if action != &new_action => {
                     session.delete_policy(*id).context("deleting old policy")?;
-                    let id = session.create_policy(species.clone(), new_action).context("creating new policy")?;
+                    let id = session
+                        .create_policy(species.clone(), new_action)
+                        .context("creating new policy")?;
                     policies.insert(species.clone(), (id, new_action));
                 }
                 (Some((id, _)), None) => {

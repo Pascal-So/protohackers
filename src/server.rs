@@ -21,10 +21,11 @@ pub fn run_tcp_server<Problem: TcpServerProblem>(problem: Problem, port: u16) ->
 
             let problem = problem.clone();
             spawn(move || {
+                let _span= tracing::info_span!("client", id = client_id).entered();
                 let res = Problem::handle_connection(problem, stream, client_id);
                 match res {
                     Ok(()) => info!("Disconnected from client {client_id}"),
-                    Err(e) => warn!("Error from client {client_id}: {e}"),
+                    Err(e) => warn!("Error from client {client_id}: {e:?}"),
                 }
             });
         }

@@ -22,7 +22,7 @@ use crate::{shutdown::ShutdownController, t03_budget_chat::State};
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    setup_logging();
 
     let port: u16 = match std::env::args().nth(1) {
         Some(str) => match str.parse() {
@@ -40,7 +40,9 @@ async fn main() {
         server::run_tcp_server(server, port);
 
         loop {}
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
     return;
 
     let shutdown = ShutdownController::new();
@@ -80,4 +82,12 @@ async fn main() {
 
     info!("shutting down");
     shutdown.shutdown().await;
+}
+
+fn setup_logging() {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+
+    log_panics::init();
 }

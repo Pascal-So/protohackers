@@ -1,5 +1,6 @@
 use std::io::{BufRead, BufWriter, Cursor, Write};
 
+use anyhow::anyhow;
 use deku::{reader::Reader, DekuContainerWrite, DekuError, DekuRead, DekuReader, DekuWrite};
 use thiserror::Error;
 
@@ -52,10 +53,25 @@ pub enum TcpMessage {
 
 #[derive(Error, Debug)]
 pub enum TcpCommunicationError {
-    #[error("protocol error: {0}")]
-    ProtocolError(String),
+    /// Protocol error caused by peer
+    #[error("protocol error caused by peer: {0}")]
+    PeerProtocolError(String),
+
+    /// Peer says we fucked up
+    #[error("peer sent error: {0}")]
+    OurProtocolError(String),
+
     #[error(transparent)]
     IoError(#[from] std::io::Error),
+}
+
+impl TcpCommunicationError {
+    pub fn expected(expected: &str, actual: TcpMessage) -> Self {
+        match actual {
+            TcpMessage::Error { message } => Self::OurProtocolError(message),
+            other => Self::PeerProtocolError(format!("expected {expected} message, got {other:?}")),
+        }
+    }
 }
 
 impl TcpMessage {
@@ -74,7 +90,7 @@ impl TcpMessage {
         }
 
         if length < 6 || length > (buf.len() + META_BYTES) as u32 {
-            return Err(TcpCommunicationError::ProtocolError(format!(
+            return Err(TcpCommunicationError::PeerProtocolError(format!(
                 "invalid message length: {}",
                 length
             )));
@@ -93,24 +109,31 @@ impl TcpMessage {
         let msg = DekuTcpMessage::from_reader_with_ctx(&mut deku_reader, message_type).map_err(
             |err| match err {
                 DekuError::Io(err) => TcpCommunicationError::IoError(err.into()),
-                other => TcpCommunicationError::ProtocolError(other.to_string()),
+                other => TcpCommunicationError::PeerProtocolError(other.to_string()),
             },
         )?;
+        if cursor.position() != inner_length as u64 {
+            return Err(TcpCommunicationError::PeerProtocolError(format!("Message specified length ({length}) exceeds the length of the actual message. Only {} bytes of the content were used.", cursor.position())));
+        }
 
         reader.read_exact(&mut buf[..1])?;
         let checksum = buf[0];
         let expected_checksum = 0u8.wrapping_sub(bytes_sum);
 
         if checksum != expected_checksum {
-            return Err(TcpCommunicationError::ProtocolError(format!(
+            return Err(TcpCommunicationError::PeerProtocolError(format!(
                 "invalid checksum: {checksum} != {expected_checksum}"
             )));
         }
 
-        msg.try_into()
+        let msg = msg.try_into()?;
+        log::debug!("received {msg:?}");
+        Ok(msg)
     }
 
     pub fn write<W: Write>(self, writer: &mut BufWriter<W>) -> Result<(), TcpCommunicationError> {
+        log::debug!("sending {self:?}");
+
         let (msg, message_type) = self.into();
 
         writer.write_all(&[message_type])?;
@@ -215,13 +238,13 @@ impl TryFrom<DekuTcpMessage> for TcpMessage {
             DekuTcpMessage::Hello { protocol, version } => {
                 let protocol: String = protocol.try_into()?;
                 if protocol != "pestcontrol" {
-                    return Err(TcpCommunicationError::ProtocolError(format!(
+                    return Err(TcpCommunicationError::PeerProtocolError(format!(
                         "hello message, invalid protocol: {protocol}"
                     )));
                 }
 
                 if version != 1 {
-                    return Err(TcpCommunicationError::ProtocolError(format!(
+                    return Err(TcpCommunicationError::PeerProtocolError(format!(
                         "hello message, invalid version: {version}"
                     )));
                 }
@@ -239,32 +262,28 @@ impl TryFrom<DekuTcpMessage> for TcpMessage {
                 site_id,
                 populations,
                 ..
-            } => {
-                Ok(
-                    TcpMessage::TargetPopulations {
-                        site: types::Site { id: site_id },
-                        populations:
-                            populations
-                                .into_iter()
-                                .map(
-                                    |(species, lower, upper)| -> Result<
-                                        (types::Species, PopulationRange),
-                                        TcpCommunicationError,
-                                    > {
-                                        Ok((species.try_into()?, lower..=upper))
-                                    },
-                                )
-                                .collect::<Result<_, TcpCommunicationError>>()?,
-                    },
-                )
-            }
+            } => Ok(TcpMessage::TargetPopulations {
+                site: types::Site { id: site_id },
+                populations:
+                    populations
+                        .into_iter()
+                        .map(
+                            |(species, lower, upper)| -> Result<
+                                (types::Species, PopulationRange),
+                                TcpCommunicationError,
+                            > {
+                                Ok((species.try_into()?, lower..=upper))
+                            },
+                        )
+                        .collect::<Result<_, TcpCommunicationError>>()?,
+            }),
             DekuTcpMessage::CreatePolicy { species, action } => Ok(TcpMessage::CreatePolicy {
                 species: species.try_into()?,
                 action: match action {
                     CULL_ACTION => types::PolicyAction::Cull,
                     CONSERVE_ACTION => types::PolicyAction::Conserve,
                     _ => {
-                        return Err(TcpCommunicationError::ProtocolError(format!(
+                        return Err(TcpCommunicationError::PeerProtocolError(format!(
                             "invalid policy action: {action}"
                         )))
                     }
@@ -355,7 +374,7 @@ struct AsciiString {
 impl TryFrom<AsciiString> for String {
     type Error = TcpCommunicationError;
     fn try_from(ascii_string: AsciiString) -> Result<String, TcpCommunicationError> {
-        String::from_utf8(ascii_string.content).or(Err(TcpCommunicationError::ProtocolError(
+        String::from_utf8(ascii_string.content).or(Err(TcpCommunicationError::PeerProtocolError(
             "invalid utf8".to_string(),
         )))
     }
@@ -378,7 +397,10 @@ pub fn handle_protocol_errors<T>(
     match result {
         Ok(t) => Ok(t),
         Err(TcpCommunicationError::IoError(error)) => Err(anyhow::Error::new(error)),
-        Err(TcpCommunicationError::ProtocolError(message)) => {
+        Err(TcpCommunicationError::OurProtocolError(message)) => {
+            Err(anyhow!("Peer says we fucked up: {message}"))
+        }
+        Err(TcpCommunicationError::PeerProtocolError(message)) => {
             let error_msg = TcpMessage::Error {
                 message: message.clone(),
             };
